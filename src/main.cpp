@@ -1,4 +1,3 @@
-
 #include <MFRC522.h>
 #include <SPI.h>
 #include "UART.h"
@@ -9,196 +8,98 @@
 #define MAX_SIZE_BLOCK 16
 #define greenPin 12
 
-//used in authentication
 MFRC522::MIFARE_Key key;
-//authentication return status code
 MFRC522::StatusCode status;
-// Defined pins to module RC522
-MFRC522 mfrc522(SS_PIN, RST_PIN);
 
+MFRC522 rfid(SS_PIN, RST_PIN);
 
-void readingData();
-void writingData();
-int menu();
-
-void setup()
-{
-Serial.begin(9600);
-SPI.begin(); // Init SPI bus
-pinMode(greenPin, OUTPUT);
-
-// Init MFRC522
-mfrc522.PCD_Init();
-Serial.println("Approach your reader card...");
-Serial.println();
-}
-
-
-void loop() 
-{
-//waiting the card approach
-if ( ! mfrc522.PICC_IsNewCardPresent())
-{
-return;
-}
-// Select a card
-if ( ! mfrc522.PICC_ReadCardSerial())
-{
-return;
-}
-
-// Dump debug info about the card; PICC_HaltA() is automatically called
-// mfrc522.PICC_DumpToSerial(&(mfrc522.uid));</p><p> //call menu function and retrieve the desired option
-int op = menu();
-
-if(op == 0)
-readingData();
-else if(op == 1)
-writingData();
-else {
-Serial.println(F("Incorrect Option!"));
-return;
-}
-
-//instructs the PICC when in the ACTIVE state to go to a "STOP" state
-mfrc522.PICC_HaltA();
-// "stop" the encryption of the PCD, it must be called after communication with authentication, otherwise new communications can not be initiated
-mfrc522.PCD_StopCrypto1();
-}
-
-
-void readingData()
-{
-
-mfrc522.PICC_DumpDetailsToSerial(&(mfrc522.uid));
-
-
-for (byte i = 0; i < 6; i++) key.keyByte[i] = 0xFF;
-
-byte buffer[SIZE_BUFFER] = {0};
-
-byte block = 1;
-byte size = SIZE_BUFFER;
-status = mfrc522.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, block, &key, &(mfrc522.uid)); //line 834 of MFRC522.cpp file
-if (status != MFRC522::STATUS_OK) {
-Serial.print(F("Authentication failed: "));
-Serial.println(mfrc522.GetStatusCodeName(status));
-return;
-}
-
-
-status = mfrc522.MIFARE_Read(block, buffer, &size);
-if (status != MFRC522::STATUS_OK) {
-Serial.print(F("Reading failed: "));
-Serial.println(mfrc522.GetStatusCodeName(status));
-digitalWrite(greenPin, HIGH);
-delay(1000);
-digitalWrite(greenPin, LOW);
-return;
-}
-else{
-digitalWrite(greenPin, HIGH);
-delay(1000);
-digitalWrite(greenPin, LOW);
-}
-
-Serial.print(F("\nData from block ["));
-Serial.print(block, HEX);Serial.print(F("]: "));
-
-//prints read data
-//47295E38EB295E38D70200400
+byte keyTagUID[4] = {0x20, 0x36, 0x4A, 0x30};
 byte karta[18] = {0x47, 0x29, 0x5E, 0x38, 0xEB, 0x29, 0x5E, 0x38, 0xD7, 0x0, 0x2, 0x0, 0x0, 0x4, 0x0, 0x0 };
-for (uint8_t i = 0; i< MAX_SIZE_BLOCK; i++) {
-    if( buffer[i] != karta[i]){
-    Serial.print("Niepoprawna karta!\n");
-    Serial.print(buffer[i]);
-    Serial.print("\n");
-    Serial.print(karta[i]);
-    }
+
+int uid_r();
+int data_r();
+
+
+void setup() {
+  Serial.begin(9600);
+  SPI.begin(); // init SPI bus
+  rfid.PCD_Init(); // init MFRC522
+  pinMode(greenPin, OUTPUT);
+
+  Serial.println("Tap an RFID/NFC tag on the RFID-RC522 reader");
 }
- Serial.print("\n");
-for (uint8_t i = 0; i < MAX_SIZE_BLOCK; i++){
+
+void loop() {
+  if (rfid.PICC_IsNewCardPresent()) { // new tag is available
+    if (rfid.PICC_ReadCardSerial()) { // NUID has been readed
+      MFRC522::PICC_Type piccType = rfid.PICC_GetType(rfid.uid.sak);
+        int uid_c = uid_r();
+        int data_c = data_r();
+          if ( uid_c == 1 && data_c == 1) {
+          Serial.println("Access is granted");
+          digitalWrite(greenPin, HIGH);
+          delay(2000);
+          digitalWrite(greenPin, LOW);
+          }
+          else
+          {
+            Serial.print("Access denied, UID:");
+            Serial.println();
+          }
+
+      rfid.PICC_HaltA(); // halt PICC
+      rfid.PCD_StopCrypto1(); // stop encryption on PCD
+    }
+  }
+}
+
+int uid_r(){
+  MFRC522::PICC_Type piccType = rfid.PICC_GetType(rfid.uid.sak);
+      Serial.print("UID: ");
+      for (int i = 0; i<4; i++){
+          Serial.print(rfid.uid.uidByte[i], HEX);
+          Serial.print(" ");
+      }
+      
+      if (rfid.uid.uidByte[0] == keyTagUID[0] &&
+          rfid.uid.uidByte[1] == keyTagUID[1] &&
+          rfid.uid.uidByte[2] == keyTagUID[2] &&
+          rfid.uid.uidByte[3] == keyTagUID[3] ) {
+          return 1;
+      } else {
+        return 0;
+      }
+
+}
+
+int data_r(){
+  for (byte i = 0; i < 6; i++) key.keyByte[i] = 0xFF; //KEY-A
+  byte buffer[SIZE_BUFFER] = {0};
+  byte block = 1;
+  byte size = SIZE_BUFFER;
+  status = rfid.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, block, &key, &(rfid.uid));
+  if (status != MFRC522::STATUS_OK) {
+    Serial.print(F("Authentication failed: "));
+    Serial.println(rfid.GetStatusCodeName(status));
+    return 0;
+  }
+  status = rfid.MIFARE_Read(block, buffer, &size);
+  if (status != MFRC522::STATUS_OK) {
+    Serial.print(F("Reading failed: "));
+    Serial.println(rfid.GetStatusCodeName(status));
+    return 0;
+  }
+  Serial.print("Data from 1 sector 1 block: ");
+  int czek = 1;
+  for ( uint8_t i = 0; i < MAX_SIZE_BLOCK; i++ ) {
     Serial.print(buffer[i], HEX);
     Serial.print(" ");
-}
-Serial.println("\n");
-
-for (uint8_t i = 0; i < MAX_SIZE_BLOCK; i++){
-    Serial.print(karta[i], HEX);
-    Serial.print(" ");
-}
-}
-
-void writingData(){
-
-
-mfrc522.PICC_DumpDetailsToSerial(&(mfrc522.uid));
-
-Serial.setTimeout(30000L) ;
-Serial.println(F("Enter the data to be written with the '#' character at the end \n[maximum of 16 characters]:"));
-
-//prepare the key - all keys are set to FFFFFFFFFFFFh
-for (byte i = 0; i < 6; i++) key.keyByte[i] = 0xFF;
-
-
-byte buffer[MAX_SIZE_BLOCK] = "";
-byte block;
-byte dataSize;
-
-
-dataSize = Serial.readBytesUntil('#', (char*)buffer, MAX_SIZE_BLOCK);
-for(byte i=dataSize; i < MAX_SIZE_BLOCK; i++)
-{
-buffer[i] = ' ';
-}
-
-block = 1; //the block to operate
-String str = (char*)buffer; //transforms the buffer data in String
-Serial.println(str);
-
-
-status = mfrc522.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A,
-block, &key, &(mfrc522.uid));
-
-if (status != MFRC522::STATUS_OK) {
-Serial.print(F("PCD_Authenticate() failed: "));
-Serial.println(mfrc522.GetStatusCodeName(status));
-return;
-}
-
-status = mfrc522.MIFARE_Write(block, buffer, MAX_SIZE_BLOCK);
-if (status != MFRC522::STATUS_OK) {
-Serial.print(F("MIFARE_Write() failed: "));
-Serial.println(mfrc522.GetStatusCodeName(status));
-return;
-}
-else{
-Serial.println(F("MIFARE_Write() success: "));
-digitalWrite(greenPin, HIGH);
-delay(1000);
-digitalWrite(greenPin, LOW);
-}
-
-}
-
-
-//menu to operation choice
-int menu()
-{
-Serial.println(F("\nChoose an option:"));
-Serial.println(F("0 - Reading data"));
-Serial.println(F("1 - Writing data\n"));
-
-//waits while the user does not start data
-while(!Serial.available()){};
-
-//retrieves the chosen option
-int op = (int)Serial.read();
-
-//remove all characters after option (as \n per example)
-while(Serial.available()) {
-if(Serial.read() == '\n') break;
-Serial.read();
-}
-return (op-48);//subtract 48 from read value, 48 is the zero from ascii table
+    if( buffer[i] != karta[i]){
+      czek = 0;
+    }
+  }
+  if ( czek == 1 )
+    return 1;
+  
+  return 0;
 }
