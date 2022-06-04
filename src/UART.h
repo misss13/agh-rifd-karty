@@ -11,6 +11,7 @@ class UART {
     static void process_command();
   
   public:
+    static int WLANCZNIK;
     static void init();
     static void tick();
     static void clear();

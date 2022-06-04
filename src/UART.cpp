@@ -3,9 +3,10 @@
 char UART::buffer[UARTBufferLength]; 
 byte UART::bufferLen = 0;
 bool UART::cleared = false;
+int UART::WLANCZNIK = 0;
 
 void UART::init() {
-  Serial.begin(115200);
+  Serial.begin(9600);
 }
 
 void UART::tick() {
@@ -118,8 +119,14 @@ void UART::process_command() {
     print_error("It doesn't work!");
     return;
   }
-  if (command == "testcommand3") {
-    Serial.println("It doesn't sure of it's workness");
+  if (command == "add_card") {
+    if ( WLANCZNIK == 0 ){
+      println("Add card - on");
+      WLANCZNIK = 1;
+    } else {
+      println("Add card - off");
+      WLANCZNIK = 0;
+    }
     return;
   }
 
